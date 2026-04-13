@@ -128,6 +128,7 @@ jobs:
             make
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-pcre
             mingw-w64-x86_64-pcre2
             mingw-w64-x86_64-zlib
 
@@ -142,6 +143,7 @@ jobs:
             mingw-w64-x86_64-clang
             mingw-w64-x86_64-lld
             mingw-w64-clang-aarch64-openssl
+            mingw-w64-clang-aarch64-pcre
             mingw-w64-clang-aarch64-pcre2
             mingw-w64-clang-aarch64-zlib
 
