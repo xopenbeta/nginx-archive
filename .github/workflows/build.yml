@@ -345,6 +345,7 @@ jobs:
             AR="llvm-ar"
             RANLIB="llvm-ranlib"
             WINDRES="llvm-windres"
+            RC="${WINDRES}"
             COMMON_CFLAGS="--target=${CROSS_TARGET} -I/clangarm64/include"
             COMMON_LDFLAGS="--target=${CROSS_TARGET} -fuse-ld=lld -L/clangarm64/lib"
 
@@ -353,14 +354,20 @@ jobs:
             export AR
             export RANLIB
             export WINDRES
-            export RC="${WINDRES}"
-            export CFLAGS="${COMMON_CFLAGS}"
-            export LDFLAGS="${COMMON_LDFLAGS}"
+            export RC
+
+            mkdir -p "${GITHUB_WORKSPACE}/build-tools"
+            cat > "${GITHUB_WORKSPACE}/build-tools/windres" <<'EOF'
+#!/usr/bin/env bash
+exec llvm-windres "$@"
+EOF
+            chmod +x "${GITHUB_WORKSPACE}/build-tools/windres"
+            export PATH="${GITHUB_WORKSPACE}/build-tools:$PATH"
 
             CC_OPT="${COMMON_CFLAGS}"
             LD_OPT="${COMMON_LDFLAGS}"
-            OPENSSL_OPT="mingwarm64 no-tests no-apps no-makedepend no-asm"
-            PCRE2_OPT="${COMMON_CFLAGS}"
+            OPENSSL_OPT="mingwarm64 no-tests no-apps no-makedepend no-asm RC=llvm-windres WINDRES=llvm-windres"
+            PCRE2_OPT="--host=${CROSS_TARGET} ${COMMON_CFLAGS}"
             ZLIB_OPT="${COMMON_CFLAGS}"
 
             echo "CC=${CC}"
