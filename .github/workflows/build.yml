@@ -358,9 +358,9 @@ jobs:
 
             mkdir -p "${GITHUB_WORKSPACE}/build-tools"
             cat > "${GITHUB_WORKSPACE}/build-tools/windres" <<EOF
-            #!/usr/bin/env bash
-            exec llvm-windres "\$@"
-            EOF
+#!/usr/bin/env bash
+exec llvm-windres "\$@"
+EOF
             chmod +x "${GITHUB_WORKSPACE}/build-tools/windres"
             export PATH="${GITHUB_WORKSPACE}/build-tools:$PATH"
 
