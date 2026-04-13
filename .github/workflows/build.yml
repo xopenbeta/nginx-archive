@@ -20,7 +20,7 @@ jobs:
         platform:
           - { os: macos,   arch: arm64,   runner: macos-14,       brew_prefix: /opt/homebrew, brew_bin: /opt/homebrew/bin/brew }
           - { os: macos,   arch: x86_64,  runner: macos-14,       brew_prefix: /usr/local,    brew_bin: /usr/local/bin/brew    }
-          - { os: linux,   arch: arm64,   runner: ubuntu-22.04                                                                 }
+          - { os: linux,   arch: arm64,   runner: ubuntu-22.04-arm                                                             }
           - { os: linux,   arch: x86_64,  runner: ubuntu-22.04                                                                 }
           - { os: windows, arch: arm64,   runner: windows-2022                                                                }
           - { os: windows, arch: x86_64,  runner: windows-2022                                                                 }
@@ -110,24 +110,11 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y build-essential libssl-dev libpcre2-dev zlib1g-dev
 
-      - name: "[Linux arm64] Install cross-compiler and dependencies"
+      - name: "[Linux arm64] Install dependencies"
         if: matrix.platform.os == 'linux' && matrix.platform.arch == 'arm64'
         run: |
-          sudo dpkg --add-architecture arm64
-          # Add arm64 apt sources
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse"           | sudo tee /etc/apt/sources.list.d/arm64.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse"  | sudo tee -a /etc/apt/sources.list.d/arm64.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64.list
-          # Restrict existing sources to amd64 (matches any mirror URL, including azure.archive.ubuntu.com)
-          sudo sed -i '/^deb \[/! s/^deb /deb [arch=amd64] /' /etc/apt/sources.list
           sudo apt-get update -y
-          sudo apt-get install -y \
-            build-essential \
-            gcc-aarch64-linux-gnu \
-            libc6-dev:arm64 \
-            libssl-dev:arm64 \
-            libpcre2-dev:arm64 \
-            zlib1g-dev:arm64
+          sudo apt-get install -y build-essential libssl-dev libpcre2-dev zlib1g-dev
 
       # ── Windows ───────────────────────────────────────────────────────────────
 
@@ -235,13 +222,11 @@ jobs:
             --with-stream \
             --with-stream_ssl_module
 
-      - name: "[Linux arm64] Configure (cross-compile)"
+      - name: "[Linux arm64] Configure"
         if: matrix.platform.os == 'linux' && matrix.platform.arch == 'arm64'
         run: |
           NGINX_VERSION="${{ matrix.nginx_version }}"
           INSTALL_DIR="nginx-${NGINX_VERSION}-linux-arm64"
-          ARM64_LIB="/usr/lib/aarch64-linux-gnu"
-          ARM64_INCLUDE="/usr/include/aarch64-linux-gnu"
 
           echo "INSTALL_DIR=${INSTALL_DIR}" >> "${GITHUB_ENV}"
           echo "PACKAGE_EXT=tar.gz"         >> "${GITHUB_ENV}"
@@ -250,10 +235,6 @@ jobs:
 
           "./configure" \
             --prefix="/${INSTALL_DIR}" \
-            --crossbuild=Linux:aarch64 \
-            --with-cc=aarch64-linux-gnu-gcc \
-            --with-cc-opt="-I${ARM64_INCLUDE}" \
-            --with-ld-opt="-L${ARM64_LIB}" \
             --with-http_ssl_module \
             --with-http_v2_module \
             --with-http_realip_module \
