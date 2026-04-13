@@ -153,6 +153,15 @@ jobs:
             "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz"
           tar xzf "nginx-${NGINX_VERSION}.tar.gz"
 
+      - name: "[nginx 1.26.3] Patch HTTP/2 GCC compatibility"
+        if: matrix.nginx_version == '1.26.3'
+        run: |
+          SOURCE_FILE="nginx-${{ matrix.nginx_version }}/src/http/v2/ngx_http_v2_filter_module.c"
+
+          perl -0pi -e 's/static const u_char nginx\[5\] = "\\x84\\xaa\\x63\\x55\\xe7";/static const u_char nginx[5] = { 0x84, 0xaa, 0x63, 0x55, 0xe7 };/g; s/static const u_char accept_encoding\[12\] =\n\s*"\\x8b\\x84\\x84\\x2d\\x69\\x5b\\x05\\x44\\x3c\\x86\\xaa\\x6f";/static const u_char accept_encoding[12] = {\n        0x8b, 0x84, 0x84, 0x2d, 0x69, 0x5b, 0x05, 0x44, 0x3c, 0x86, 0xaa, 0x6f\n    };/g' "${SOURCE_FILE}"
+
+          sed -n '118,124p' "${SOURCE_FILE}"
+
       - name: "[Windows] Download PCRE2 source"
         if: matrix.platform.os == 'windows'
         run: |
