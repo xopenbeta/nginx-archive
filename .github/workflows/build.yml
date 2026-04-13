@@ -128,6 +128,7 @@ jobs:
           msystem: MINGW64
           update: true
           install: >-
+            diffutils
             make
             perl
             mingw-w64-x86_64-gcc
@@ -139,6 +140,7 @@ jobs:
           msystem: MINGW64
           update: true
           install: >-
+            diffutils
             make
             perl
             mingw-w64-x86_64-clang
@@ -180,6 +182,7 @@ jobs:
         if: matrix.platform.os == 'windows' && matrix.platform.arch == 'arm64'
         run: |
           OPENSSL_CONFIG="openssl-${OPENSSL_VERSION}/Configurations/10-main.conf"
+          CROSS_TARGET="aarch64-w64-mingw32"
 
           if [ ! -f "${OPENSSL_CONFIG}" ]; then
             echo "Expected OpenSSL config not found: ${OPENSSL_CONFIG}"
@@ -195,13 +198,14 @@ jobs:
             /#### UEFI/ && !patched {
               print "    \"mingwarm64\" => {"
               print "        inherit_from     => [ \"mingw-common\" ],"
-              print "        cflags           => \"\"," 
+              print "        CC               => \"clang\"," 
+              print "        cflags           => \"--target='"${CROSS_TARGET}"'\"," 
               print "        sys_id           => \"MINGWARM64\"," 
               print "        bn_ops           => add(\"SIXTY_FOUR_BIT\"),"
               print "        asm_arch         => '\''aarch64'\'',"
               print "        uplink_arch      => '\''armv8'\'',"
               print "        perlasm_scheme   => \"win64\"," 
-              print "        shared_rcflag    => \"\"," 
+              print "        shared_rcflag    => \"--target=pe-aarch64\"," 
               print "        multilib         => \"-arm64\"," 
               print "    },"
               print ""
@@ -356,8 +360,8 @@ jobs:
             CC_OPT="${COMMON_CFLAGS}"
             LD_OPT="${COMMON_LDFLAGS}"
             OPENSSL_OPT="mingwarm64 no-tests no-apps no-makedepend no-asm"
-            PCRE2_OPT=""
-            ZLIB_OPT=""
+            PCRE2_OPT="${COMMON_CFLAGS}"
+            ZLIB_OPT="${COMMON_CFLAGS}"
 
             echo "CC=${CC}"
             echo "CHOST=${CHOST}"
