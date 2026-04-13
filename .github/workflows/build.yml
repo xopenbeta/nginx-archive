@@ -1,0 +1,378 @@
+name: Build nginx for macOS / Linux / Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  MACOS_DEPLOYMENT_TARGET: "12.0"
+
+jobs:
+  build:
+    name: nginx ${{ matrix.nginx_version }} (${{ matrix.platform.os }}-${{ matrix.platform.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        nginx_version:
+          - "1.26.3"
+          - "1.28.3"
+        platform:
+          - { os: macos,   arch: arm64,   runner: macos-14,       brew_prefix: /opt/homebrew, brew_bin: /opt/homebrew/bin/brew }
+          - { os: macos,   arch: x86_64,  runner: macos-14,       brew_prefix: /usr/local,    brew_bin: /usr/local/bin/brew    }
+          - { os: linux,   arch: arm64,   runner: ubuntu-22.04                                                                 }
+          - { os: linux,   arch: x86_64,  runner: ubuntu-22.04                                                                 }
+          - { os: windows, arch: arm64,   runner: windows-2022                                                                }
+          - { os: windows, arch: x86_64,  runner: windows-2022                                                                 }
+
+    runs-on: ${{ matrix.platform.runner }}
+
+    defaults:
+      run:
+        shell: ${{ matrix.platform.os == 'windows' && 'msys2 {0}' || 'bash' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── macOS ────────────────────────────────────────────────────────────────
+
+      - name: "[macOS] Select Xcode 15.4"
+        if: matrix.platform.os == 'macos'
+        run: |
+          XCODE_APP="/Applications/Xcode_15.4.app"
+          if [ ! -d "${XCODE_APP}" ]; then
+            echo "Expected Xcode not found: ${XCODE_APP}"
+            exit 1
+          fi
+          echo "Selected Xcode: ${XCODE_APP}"
+          sudo xcode-select -s "${XCODE_APP}/Contents/Developer"
+          xcodebuild -version
+          xcrun clang --version
+          echo "DEVELOPER_DIR=${XCODE_APP}/Contents/Developer" >> "${GITHUB_ENV}"
+
+      - name: "[macOS x86_64] Prepare Rosetta and x86_64 Homebrew"
+        if: matrix.platform.os == 'macos' && matrix.platform.arch == 'x86_64'
+        run: |
+          softwareupdate --install-rosetta --agree-to-license || true
+
+          if [ ! -x "/usr/local/bin/brew" ]; then
+            NONINTERACTIVE=1 arch -x86_64 /bin/bash -c \
+              "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          fi
+
+          arch -x86_64 /usr/local/bin/brew --version
+
+      - name: "[macOS] Install dependencies"
+        if: matrix.platform.os == 'macos'
+        run: |
+          BREW_BIN="${{ matrix.platform.brew_bin }}"
+
+          if [ ! -x "${BREW_BIN}" ]; then
+            echo "Expected Homebrew not found: ${BREW_BIN}"
+            exit 1
+          fi
+
+          brew_cmd() {
+            if [ "${{ matrix.platform.arch }}" = "x86_64" ]; then
+              arch -x86_64 "${BREW_BIN}" "$@"
+            else
+              "${BREW_BIN}" "$@"
+            fi
+          }
+
+          brew_cmd update
+          brew_cmd install openssl@3 pcre2 pkg-config
+
+          {
+            echo "BREW_PREFIX=${{ matrix.platform.brew_prefix }}"
+            echo "BREW_BIN=${BREW_BIN}"
+          } >> "${GITHUB_ENV}"
+
+      - name: "[macOS] Sanitize environment"
+        if: matrix.platform.os == 'macos'
+        run: |
+          echo "CPATH=" >> "${GITHUB_ENV}"
+          echo "C_INCLUDE_PATH=" >> "${GITHUB_ENV}"
+          echo "CPLUS_INCLUDE_PATH=" >> "${GITHUB_ENV}"
+
+      - name: "[macOS] Resolve SDK path"
+        if: matrix.platform.os == 'macos'
+        run: |
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          echo "SDKROOT=${SDK_PATH}" >> "${GITHUB_ENV}"
+
+      # ── Linux ─────────────────────────────────────────────────────────────────
+
+      - name: "[Linux x86_64] Install dependencies"
+        if: matrix.platform.os == 'linux' && matrix.platform.arch == 'x86_64'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential libssl-dev libpcre2-dev zlib1g-dev
+
+      - name: "[Linux arm64] Install cross-compiler and dependencies"
+        if: matrix.platform.os == 'linux' && matrix.platform.arch == 'arm64'
+        run: |
+          sudo dpkg --add-architecture arm64
+          # Add arm64 apt sources
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse"           | sudo tee /etc/apt/sources.list.d/arm64.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse"  | sudo tee -a /etc/apt/sources.list.d/arm64.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64.list
+          # Restrict existing sources to amd64
+          sudo sed -i 's/^deb \(http:\/\/archive\|http:\/\/security\)/deb [arch=amd64] \1/' /etc/apt/sources.list
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            build-essential \
+            gcc-aarch64-linux-gnu \
+            libssl-dev:arm64 \
+            libpcre2-dev:arm64 \
+            zlib1g-dev:arm64
+
+      # ── Windows ───────────────────────────────────────────────────────────────
+
+      - name: "[Windows x86_64] Setup MSYS2 MINGW64"
+        if: matrix.platform.os == 'windows' && matrix.platform.arch == 'x86_64'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-pcre2
+            mingw-w64-x86_64-zlib
+
+      - name: "[Windows arm64] Setup MSYS2 MINGW64 (cross-compile to arm64)"
+        if: matrix.platform.os == 'windows' && matrix.platform.arch == 'arm64'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make
+            mingw-w64-x86_64-clang
+            mingw-w64-x86_64-lld
+            mingw-w64-clang-aarch64-openssl
+            mingw-w64-clang-aarch64-pcre2
+            mingw-w64-clang-aarch64-zlib
+
+      # ── Source download (all platforms) ───────────────────────────────────────
+
+      - name: Download nginx source
+        run: |
+          NGINX_VERSION="${{ matrix.nginx_version }}"
+          curl -fSL -o "nginx-${NGINX_VERSION}.tar.gz" \
+            "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz"
+          tar xzf "nginx-${NGINX_VERSION}.tar.gz"
+
+      # ── Configure ─────────────────────────────────────────────────────────────
+
+      - name: "[macOS] Configure"
+        if: matrix.platform.os == 'macos'
+        run: |
+          NGINX_VERSION="${{ matrix.nginx_version }}"
+          TARGET_ARCH="${{ matrix.platform.arch }}"
+          BREW_BIN="${BREW_BIN}"
+          BREW_PREFIX="${BREW_PREFIX}"
+
+          brew_cmd() {
+            if [ "${TARGET_ARCH}" = "x86_64" ]; then
+              arch -x86_64 "${BREW_BIN}" "$@"
+            else
+              "${BREW_BIN}" "$@"
+            fi
+          }
+
+          OPENSSL_PREFIX="$(brew_cmd --prefix openssl@3)"
+          PCRE2_PREFIX="$(brew_cmd --prefix pcre2)"
+          CC="$(xcrun --find clang)"
+          SDK_PATH="${SDKROOT}"
+          INSTALL_DIR="nginx-${NGINX_VERSION}-macos-${TARGET_ARCH}"
+
+          echo "INSTALL_DIR=${INSTALL_DIR}" >> "${GITHUB_ENV}"
+          echo "PACKAGE_EXT=tar.gz"         >> "${GITHUB_ENV}"
+
+          CC_OPT="-arch ${TARGET_ARCH} --sysroot=${SDK_PATH} -mmacosx-version-min=${MACOS_DEPLOYMENT_TARGET} -I${OPENSSL_PREFIX}/include -I${PCRE2_PREFIX}/include"
+          LD_OPT="-arch ${TARGET_ARCH} --sysroot=${SDK_PATH} -mmacosx-version-min=${MACOS_DEPLOYMENT_TARGET} -L${OPENSSL_PREFIX}/lib -L${PCRE2_PREFIX}/lib"
+
+          cd "nginx-${NGINX_VERSION}"
+
+          "./configure" \
+            --prefix="/${INSTALL_DIR}" \
+            --with-cc="${CC}" \
+            --with-cc-opt="${CC_OPT}" \
+            --with-ld-opt="${LD_OPT}" \
+            --with-http_ssl_module \
+            --with-http_v2_module \
+            --with-http_realip_module \
+            --with-http_stub_status_module \
+            --with-http_gzip_static_module \
+            --with-http_sub_module \
+            --with-stream \
+            --with-stream_ssl_module
+
+      - name: "[Linux x86_64] Configure"
+        if: matrix.platform.os == 'linux' && matrix.platform.arch == 'x86_64'
+        run: |
+          NGINX_VERSION="${{ matrix.nginx_version }}"
+          INSTALL_DIR="nginx-${NGINX_VERSION}-linux-x86_64"
+
+          echo "INSTALL_DIR=${INSTALL_DIR}" >> "${GITHUB_ENV}"
+          echo "PACKAGE_EXT=tar.gz"         >> "${GITHUB_ENV}"
+
+          cd "nginx-${NGINX_VERSION}"
+
+          "./configure" \
+            --prefix="/${INSTALL_DIR}" \
+            --with-http_ssl_module \
+            --with-http_v2_module \
+            --with-http_realip_module \
+            --with-http_stub_status_module \
+            --with-http_gzip_static_module \
+            --with-http_sub_module \
+            --with-stream \
+            --with-stream_ssl_module
+
+      - name: "[Linux arm64] Configure (cross-compile)"
+        if: matrix.platform.os == 'linux' && matrix.platform.arch == 'arm64'
+        run: |
+          NGINX_VERSION="${{ matrix.nginx_version }}"
+          INSTALL_DIR="nginx-${NGINX_VERSION}-linux-arm64"
+          ARM64_LIB="/usr/lib/aarch64-linux-gnu"
+          ARM64_INCLUDE="/usr/include/aarch64-linux-gnu"
+
+          echo "INSTALL_DIR=${INSTALL_DIR}" >> "${GITHUB_ENV}"
+          echo "PACKAGE_EXT=tar.gz"         >> "${GITHUB_ENV}"
+
+          cd "nginx-${NGINX_VERSION}"
+
+          "./configure" \
+            --prefix="/${INSTALL_DIR}" \
+            --crossbuild=Linux:aarch64 \
+            --with-cc=aarch64-linux-gnu-gcc \
+            --with-cc-opt="-I${ARM64_INCLUDE}" \
+            --with-ld-opt="-L${ARM64_LIB}" \
+            --with-http_ssl_module \
+            --with-http_v2_module \
+            --with-http_realip_module \
+            --with-http_stub_status_module \
+            --with-http_gzip_static_module \
+            --with-http_sub_module \
+            --with-stream \
+            --with-stream_ssl_module
+
+      - name: "[Windows] Configure"
+        if: matrix.platform.os == 'windows'
+        run: |
+          NGINX_VERSION="${{ matrix.nginx_version }}"
+          TARGET_ARCH="${{ matrix.platform.arch }}"
+          INSTALL_DIR="nginx-${NGINX_VERSION}-windows-${TARGET_ARCH}"
+
+          if [ "${TARGET_ARCH}" = "arm64" ]; then
+            # Cross-compile: host compiler (x86_64 clang) targets aarch64-w64-mingw32
+            # Target headers/libs installed by mingw-w64-clang-aarch64-* packages live in /clangarm64
+            CROSS_TARGET="aarch64-w64-mingw32"
+            CC="clang"
+            CC_OPT="--target=${CROSS_TARGET} -fuse-ld=lld -I/clangarm64/include"
+            LD_OPT="--target=${CROSS_TARGET} -fuse-ld=lld -L/clangarm64/lib"
+          else
+            CC="gcc"
+            CC_OPT="-I/mingw64/include"
+            LD_OPT="-L/mingw64/lib"
+          fi
+
+          echo "INSTALL_DIR=${INSTALL_DIR}" >> "${GITHUB_ENV}"
+          echo "PACKAGE_EXT=zip"            >> "${GITHUB_ENV}"
+
+          cd "nginx-${NGINX_VERSION}"
+
+          "./configure" \
+            --prefix="/${INSTALL_DIR}" \
+            --with-cc="${CC}" \
+            --with-cc-opt="${CC_OPT}" \
+            --with-ld-opt="${LD_OPT}" \
+            --with-http_ssl_module \
+            --with-http_v2_module \
+            --with-http_realip_module \
+            --with-http_stub_status_module \
+            --with-http_gzip_static_module \
+            --with-http_sub_module
+
+      # ── Build (all platforms) ─────────────────────────────────────────────────
+
+      - name: Build
+        run: |
+          if [ "${{ matrix.platform.os }}" = "macos" ]; then
+            JOBS="$(sysctl -n hw.logicalcpu)"
+          elif [ "${{ matrix.platform.os }}" = "windows" ]; then
+            JOBS="${NUMBER_OF_PROCESSORS:-4}"
+          else
+            JOBS="$(nproc)"
+          fi
+
+          cd "nginx-${{ matrix.nginx_version }}"
+          make -j"${JOBS}"
+
+      # ── Package ───────────────────────────────────────────────────────────────
+
+      - name: "[Linux/macOS] Package"
+        if: matrix.platform.os != 'windows'
+        run: |
+          NGINX_VERSION="${{ matrix.nginx_version }}"
+          cd "nginx-${NGINX_VERSION}"
+          rm -rf "${GITHUB_WORKSPACE}/stage"
+          make install DESTDIR="${GITHUB_WORKSPACE}/stage"
+
+          cd "${GITHUB_WORKSPACE}/stage"
+          tar czf "${GITHUB_WORKSPACE}/${INSTALL_DIR}.tar.gz" "${INSTALL_DIR}"
+
+          cd "${GITHUB_WORKSPACE}"
+          shasum -a 256 "${INSTALL_DIR}.tar.gz" > "${INSTALL_DIR}.tar.gz.sha256"
+
+      - name: "[Windows] Package"
+        if: matrix.platform.os == 'windows'
+        run: |
+          NGINX_VERSION="${{ matrix.nginx_version }}"
+          cd "nginx-${NGINX_VERSION}"
+          rm -rf "${GITHUB_WORKSPACE}/stage"
+          make install DESTDIR="${GITHUB_WORKSPACE}/stage"
+
+          cd "${GITHUB_WORKSPACE}/stage"
+          # Use PowerShell to create .zip
+          powershell -Command "Compress-Archive -Path '${INSTALL_DIR}' -DestinationPath '${GITHUB_WORKSPACE}/${INSTALL_DIR}.zip'"
+
+          cd "${GITHUB_WORKSPACE}"
+          sha256sum "${INSTALL_DIR}.zip" > "${INSTALL_DIR}.zip.sha256"
+
+      # ── Upload artifact ────────────────────────────────────────────────────────
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nginx-${{ matrix.nginx_version }}-${{ matrix.platform.os }}-${{ matrix.platform.arch }}
+          path: |
+            nginx-${{ matrix.nginx_version }}-${{ matrix.platform.os }}-${{ matrix.platform.arch }}.tar.gz
+            nginx-${{ matrix.nginx_version }}-${{ matrix.platform.os }}-${{ matrix.platform.arch }}.tar.gz.sha256
+            nginx-${{ matrix.nginx_version }}-${{ matrix.platform.os }}-${{ matrix.platform.arch }}.zip
+            nginx-${{ matrix.nginx_version }}-${{ matrix.platform.os }}-${{ matrix.platform.arch }}.zip.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            nginx-*/nginx-*.tar.gz
+            nginx-*/nginx-*.tar.gz.sha256
+            nginx-*/nginx-*.zip
+            nginx-*/nginx-*.zip.sha256
+          generate_release_notes: true
