@@ -5,7 +5,7 @@
 ## 触发构建
 
 ```bash
-git tag v202604131604
+git tag v202604131610
 git push
 git push origin v202604131604
 ```
