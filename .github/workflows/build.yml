@@ -341,7 +341,7 @@ jobs:
             AR="llvm-ar"
             RANLIB="llvm-ranlib"
             WINDRES="llvm-windres"
-            COMMON_CFLAGS="--target=${CROSS_TARGET} -fuse-ld=lld -I/clangarm64/include"
+            COMMON_CFLAGS="--target=${CROSS_TARGET} -I/clangarm64/include"
             COMMON_LDFLAGS="--target=${CROSS_TARGET} -fuse-ld=lld -L/clangarm64/lib"
 
             export CHOST="${CROSS_TARGET}"
@@ -355,9 +355,9 @@ jobs:
 
             CC_OPT="${COMMON_CFLAGS}"
             LD_OPT="${COMMON_LDFLAGS}"
-            OPENSSL_OPT="mingwarm64 no-shared no-tests no-apps no-makedepend no-asm"
-            PCRE2_OPT="--host=${CROSS_TARGET} --disable-shared --enable-static --disable-jit"
-            ZLIB_OPT="--static"
+            OPENSSL_OPT="mingwarm64 no-tests no-apps no-makedepend no-asm"
+            PCRE2_OPT=""
+            ZLIB_OPT=""
 
             echo "CC=${CC}"
             echo "CHOST=${CHOST}"
@@ -372,9 +372,9 @@ jobs:
             CC="gcc"
             CC_OPT="-I/mingw64/include"
             LD_OPT="-L/mingw64/lib"
-            OPENSSL_OPT="mingw64 no-shared no-tests no-apps no-makedepend"
-            PCRE2_OPT="--disable-shared --enable-static"
-            ZLIB_OPT="--static"
+            OPENSSL_OPT="mingw64 no-tests no-apps no-makedepend"
+            PCRE2_OPT=""
+            ZLIB_OPT=""
           fi
 
           echo "INSTALL_DIR=${INSTALL_DIR}" >> "${GITHUB_ENV}"
