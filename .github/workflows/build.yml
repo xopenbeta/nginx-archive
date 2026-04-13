@@ -7,6 +7,7 @@ on:
 
 env:
   MACOS_DEPLOYMENT_TARGET: "12.0"
+  PCRE2_VERSION: "10.45"
 
 jobs:
   build:
@@ -128,8 +129,6 @@ jobs:
             make
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-openssl
-            mingw-w64-x86_64-pcre
-            mingw-w64-x86_64-pcre2
             mingw-w64-x86_64-zlib
 
       - name: "[Windows arm64] Setup MSYS2 MINGW64 (cross-compile to arm64)"
@@ -143,8 +142,6 @@ jobs:
             mingw-w64-x86_64-clang
             mingw-w64-x86_64-lld
             mingw-w64-clang-aarch64-openssl
-            mingw-w64-clang-aarch64-pcre
-            mingw-w64-clang-aarch64-pcre2
             mingw-w64-clang-aarch64-zlib
 
       # ── Source download (all platforms) ───────────────────────────────────────
@@ -155,6 +152,13 @@ jobs:
           curl -fSL -o "nginx-${NGINX_VERSION}.tar.gz" \
             "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz"
           tar xzf "nginx-${NGINX_VERSION}.tar.gz"
+
+      - name: "[Windows] Download PCRE2 source"
+        if: matrix.platform.os == 'windows'
+        run: |
+          curl -fSL -o "pcre2-${PCRE2_VERSION}.tar.gz" \
+            "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_VERSION}/pcre2-${PCRE2_VERSION}.tar.gz"
+          tar xzf "pcre2-${PCRE2_VERSION}.tar.gz"
 
       # ── Configure ─────────────────────────────────────────────────────────────
 
@@ -250,8 +254,14 @@ jobs:
         if: matrix.platform.os == 'windows'
         run: |
           NGINX_VERSION="${{ matrix.nginx_version }}"
+          PCRE2_SOURCE_DIR="../pcre2-${PCRE2_VERSION}"
           TARGET_ARCH="${{ matrix.platform.arch }}"
           INSTALL_DIR="nginx-${NGINX_VERSION}-windows-${TARGET_ARCH}"
+
+          if [ ! -d "pcre2-${PCRE2_VERSION}" ]; then
+            echo "Expected PCRE2 source not found: pcre2-${PCRE2_VERSION}"
+            exit 1
+          fi
 
           if [ "${TARGET_ARCH}" = "arm64" ]; then
             # Cross-compile: host compiler (x86_64 clang) targets aarch64-w64-mingw32
@@ -274,6 +284,7 @@ jobs:
           "./configure" \
             --prefix="/${INSTALL_DIR}" \
             --with-cc="${CC}" \
+            --with-pcre="${PCRE2_SOURCE_DIR}" \
             --with-cc-opt="${CC_OPT}" \
             --with-ld-opt="${LD_OPT}" \
             --with-http_ssl_module \
