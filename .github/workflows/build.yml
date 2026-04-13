@@ -300,17 +300,20 @@ jobs:
 
           if [ "${TARGET_ARCH}" = "arm64" ]; then
             # Cross-compile: host compiler (x86_64 clang) targets aarch64-w64-mingw32
-            # OpenSSL is built from source as part of the nginx build, so only zlib remains external.
             CROSS_TARGET="aarch64-w64-mingw32"
             CC="clang"
             CC_OPT="--target=${CROSS_TARGET} -fuse-ld=lld -I/clangarm64/include"
             LD_OPT="--target=${CROSS_TARGET} -fuse-ld=lld -L/clangarm64/lib"
             OPENSSL_OPT="mingwarm64 no-shared no-tests no-apps no-makedepend no-asm"
+            PCRE2_OPT="--host=${CROSS_TARGET} --disable-shared --enable-static --disable-jit CFLAGS='${CC_OPT}' LDFLAGS='${LD_OPT}'"
+            ZLIB_OPT="--static CC='${CC}' CFLAGS='${CC_OPT}' LDFLAGS='${LD_OPT}'"
           else
             CC="gcc"
             CC_OPT="-I/mingw64/include"
             LD_OPT="-L/mingw64/lib"
             OPENSSL_OPT="mingw64 no-shared no-tests no-apps no-makedepend"
+            PCRE2_OPT="--disable-shared --enable-static"
+            ZLIB_OPT="--static"
           fi
 
           echo "INSTALL_DIR=${INSTALL_DIR}" >> "${GITHUB_ENV}"
@@ -322,8 +325,10 @@ jobs:
             --prefix="/${INSTALL_DIR}" \
             --with-cc="${CC}" \
             --with-pcre="${PCRE2_SOURCE_DIR}" \
+            --with-pcre-opt="${PCRE2_OPT}" \
             --with-openssl="${OPENSSL_SOURCE_DIR}" \
             --with-zlib="${ZLIB_SOURCE_DIR}" \
+            --with-zlib-opt="${ZLIB_OPT}" \
             --with-openssl-opt="${OPENSSL_OPT}" \
             --with-cc-opt="${CC_OPT}" \
             --with-ld-opt="${LD_OPT}" \
