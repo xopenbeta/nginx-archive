@@ -8,6 +8,7 @@ on:
 env:
   MACOS_DEPLOYMENT_TARGET: "12.0"
   PCRE2_VERSION: "10.45"
+  OPENSSL_VERSION: "3.4.1"
 
 jobs:
   build:
@@ -127,8 +128,8 @@ jobs:
           update: true
           install: >-
             make
+            perl
             mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
 
       - name: "[Windows arm64] Setup MSYS2 MINGW64 (cross-compile to arm64)"
@@ -139,9 +140,9 @@ jobs:
           update: true
           install: >-
             make
+            perl
             mingw-w64-x86_64-clang
             mingw-w64-x86_64-lld
-            mingw-w64-clang-aarch64-openssl
             mingw-w64-clang-aarch64-zlib
 
       # ── Source download (all platforms) ───────────────────────────────────────
@@ -159,6 +160,13 @@ jobs:
           curl -fSL -o "pcre2-${PCRE2_VERSION}.tar.gz" \
             "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_VERSION}/pcre2-${PCRE2_VERSION}.tar.gz"
           tar xzf "pcre2-${PCRE2_VERSION}.tar.gz"
+
+      - name: "[Windows] Download OpenSSL source"
+        if: matrix.platform.os == 'windows'
+        run: |
+          curl -fSL -o "openssl-${OPENSSL_VERSION}.tar.gz" \
+            "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz"
+          tar xzf "openssl-${OPENSSL_VERSION}.tar.gz"
 
       # ── Configure ─────────────────────────────────────────────────────────────
 
@@ -255,6 +263,7 @@ jobs:
         run: |
           NGINX_VERSION="${{ matrix.nginx_version }}"
           PCRE2_SOURCE_DIR="../pcre2-${PCRE2_VERSION}"
+          OPENSSL_SOURCE_DIR="../openssl-${OPENSSL_VERSION}"
           TARGET_ARCH="${{ matrix.platform.arch }}"
           INSTALL_DIR="nginx-${NGINX_VERSION}-windows-${TARGET_ARCH}"
 
@@ -263,17 +272,24 @@ jobs:
             exit 1
           fi
 
+          if [ ! -d "openssl-${OPENSSL_VERSION}" ]; then
+            echo "Expected OpenSSL source not found: openssl-${OPENSSL_VERSION}"
+            exit 1
+          fi
+
           if [ "${TARGET_ARCH}" = "arm64" ]; then
             # Cross-compile: host compiler (x86_64 clang) targets aarch64-w64-mingw32
-            # Target headers/libs installed by mingw-w64-clang-aarch64-* packages live in /clangarm64
+            # OpenSSL is built from source as part of the nginx build, so only zlib remains external.
             CROSS_TARGET="aarch64-w64-mingw32"
             CC="clang"
             CC_OPT="--target=${CROSS_TARGET} -fuse-ld=lld -I/clangarm64/include"
             LD_OPT="--target=${CROSS_TARGET} -fuse-ld=lld -L/clangarm64/lib"
+            OPENSSL_OPT="mingwarm64 no-shared no-tests no-apps no-makedepend no-asm"
           else
             CC="gcc"
             CC_OPT="-I/mingw64/include"
             LD_OPT="-L/mingw64/lib"
+            OPENSSL_OPT="mingw64 no-shared no-tests no-apps no-makedepend"
           fi
 
           echo "INSTALL_DIR=${INSTALL_DIR}" >> "${GITHUB_ENV}"
@@ -285,6 +301,8 @@ jobs:
             --prefix="/${INSTALL_DIR}" \
             --with-cc="${CC}" \
             --with-pcre="${PCRE2_SOURCE_DIR}" \
+            --with-openssl="${OPENSSL_SOURCE_DIR}" \
+            --with-openssl-opt="${OPENSSL_OPT}" \
             --with-cc-opt="${CC_OPT}" \
             --with-ld-opt="${LD_OPT}" \
             --with-http_ssl_module \
