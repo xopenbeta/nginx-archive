@@ -362,7 +362,7 @@ jobs:
 
             CC_OPT="${COMMON_CFLAGS}"
             LD_OPT="${COMMON_LDFLAGS}"
-            OPENSSL_OPT="mingwarm64 no-tests no-apps no-makedepend no-asm"
+            OPENSSL_OPT="mingwarm64 no-tests no-apps no-makedepend no-asm no-legacy"
             PCRE2_OPT="${COMMON_CFLAGS}"
             ZLIB_OPT="${COMMON_CFLAGS}"
 
