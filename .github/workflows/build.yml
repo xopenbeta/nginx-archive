@@ -133,18 +133,19 @@ jobs:
             perl
             mingw-w64-x86_64-gcc
 
-      - name: "[Windows arm64] Setup MSYS2 MINGW64 (cross-compile to arm64)"
+      - name: "[Windows arm64] Setup MSYS2 CLANGARM64"
         if: matrix.platform.os == 'windows' && matrix.platform.arch == 'arm64'
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: CLANGARM64
           update: true
           install: >-
             diffutils
             make
             perl
-            mingw-w64-x86_64-clang
-            mingw-w64-x86_64-lld
+            mingw-w64-clang-aarch64-clang
+            mingw-w64-clang-aarch64-lld
+            mingw-w64-clang-aarch64-llvm-tools
 
       # ── Source download (all platforms) ───────────────────────────────────────
 
@@ -340,13 +341,15 @@ jobs:
           fi
 
           if [ "${TARGET_ARCH}" = "arm64" ]; then
+            export PATH="/clangarm64/bin:${PATH}"
+
             CROSS_TARGET="aarch64-w64-mingw32"
             CC="clang"
             AR="llvm-ar"
             RANLIB="llvm-ranlib"
             WINDRES="llvm-windres"
-            COMMON_CFLAGS="--target=${CROSS_TARGET} -I/clangarm64/include"
-            COMMON_LDFLAGS="--target=${CROSS_TARGET} -fuse-ld=lld -L/clangarm64/lib"
+            COMMON_CFLAGS="-I/clangarm64/include"
+            COMMON_LDFLAGS="-fuse-ld=lld -L/clangarm64/lib"
 
             export CHOST="${CROSS_TARGET}"
             export CC
@@ -360,7 +363,7 @@ jobs:
             CC_OPT="${COMMON_CFLAGS}"
             LD_OPT="${COMMON_LDFLAGS}"
             OPENSSL_OPT="mingwarm64 no-tests no-apps no-makedepend no-asm"
-            PCRE2_OPT="${COMMON_CFLAGS} ${COMMON_LDFLAGS}"
+            PCRE2_OPT="${COMMON_CFLAGS}"
             ZLIB_OPT="${COMMON_CFLAGS}"
 
             echo "CC=${CC}"
