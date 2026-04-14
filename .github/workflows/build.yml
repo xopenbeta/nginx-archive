@@ -25,7 +25,7 @@ jobs:
           - { os: macos,   arch: x86_64,  runner: macos-14,       brew_prefix: /usr/local,    brew_bin: /usr/local/bin/brew    }
           - { os: linux,   arch: arm64,   runner: ubuntu-22.04-arm                                                             }
           - { os: linux,   arch: x86_64,  runner: ubuntu-22.04                                                                 }
-          - { os: windows, arch: arm64,   runner: windows-2022                                                                }
+          - { os: windows, arch: arm64,   runner: windows-11-arm                                                              }
           - { os: windows, arch: x86_64,  runner: windows-2022                                                                 }
 
     runs-on: ${{ matrix.platform.runner }}
